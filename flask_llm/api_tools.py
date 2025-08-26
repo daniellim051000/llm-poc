@@ -262,12 +262,34 @@ class WebSearchTool(BaseTool):
                         url=query.strip(), formats=["markdown"], only_main_content=True
                     )
                     print(f"DEBUG: Scrape result: {result}")
-                    if result and "success" in result and result["success"]:
-                        content = result.get("data", {}).get(
-                            "markdown", "No content available"
-                        )
+                    print(f"DEBUG: Result type: {type(result)}")
+
+                    # Handle different response formats from Firecrawl
+                    if hasattr(result, "markdown") and result.markdown:
+                        # New format: Document object with markdown attribute
+                        content = result.markdown
                         return f"Content from {query}:\n\n{content}"
-                    return f"Error: Could not scrape URL {query}. {result.get('error', 'Unknown error') if result else 'No response'}"
+                    elif isinstance(result, dict):
+                        # Old format: Dictionary response
+                        if result.get("success"):
+                            data = result.get("data", {})
+                            if isinstance(data, dict):
+                                content = data.get("markdown", "No content available")
+                            else:
+                                content = str(data)
+                            return f"Content from {query}:\n\n{content}"
+                        else:
+                            error_msg = result.get("error", "Unknown error")
+                            return f"Error: Could not scrape URL {query}. {error_msg}"
+                    elif hasattr(result, "data") and result.data:
+                        # Alternative format: Object with data attribute
+                        if hasattr(result.data, "markdown"):
+                            content = result.data.markdown
+                        else:
+                            content = str(result.data)
+                        return f"Content from {query}:\n\n{content}"
+                    else:
+                        return f"Error: Could not scrape URL {query}. Unexpected response format: {type(result)}"
                 except Exception as scrape_error:
                     print(f"DEBUG: Scrape exception: {scrape_error}")
                     return f"Error scraping {query}: {str(scrape_error)}"
