@@ -19,6 +19,7 @@ The system consists of two main components:
 
 - Python 3.13+
 - Azure OpenAI API credentials
+- Firecrawl API key (for web search functionality)
 - Virtual environment support
 
 ### 1. Environment Setup
@@ -31,6 +32,7 @@ AZURE_OPENAI_ENDPOINT=your_endpoint_here
 AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
 DJANGO_API_URL=http://localhost:8000
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here
 ```
 
 ### 2. Django API Setup
@@ -76,7 +78,7 @@ The system manages comprehensive business data including:
 
 ## 🛠️ API Tools
 
-The LangChain agent has access to 9 specialized tools for querying business data:
+The LangChain agent has access to 10 specialized tools for querying business data and web information:
 
 | Tool | Purpose |
 |------|---------|
@@ -89,6 +91,7 @@ The LangChain agent has access to 9 specialized tools for querying business data
 | `active_contracts` | Get all active SLA agreements |
 | `serial_lookup` | Machine serial number lookup |
 | `service_history` | Maintenance and service records |
+| `web_search` | Search the web or scrape URLs using Firecrawl |
 
 ## 💬 Sample Queries
 
@@ -101,6 +104,9 @@ Try these natural language queries:
 - "What machines does Enterprise B have under contract?"
 - "Find all items from Ricoh brand"
 - "What is the residual value information for our machines?"
+- "Search for industry trends about office equipment leasing"
+- "What are the latest news about Ricoh printers?"
+- "Find information about our competitor's pricing on copiers"
 
 ## 🧪 Testing the System
 
@@ -164,7 +170,8 @@ llm-poc/
 - **Both services must run simultaneously** (Django on port 8000, Flask on port 5000)
 - **Sample data required**: Run `populate_data.py` before testing
 - **Azure OpenAI credentials**: Required for LLM functionality
-- **Business focus**: Designed for business data queries, not general conversation
+- **Firecrawl API credentials**: Required for web search and URL scraping features
+- **Business focus**: Designed for business data queries and web research, not general conversation
 
 ## 🛠️ Development
 

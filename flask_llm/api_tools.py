@@ -1,6 +1,7 @@
 from typing import Optional, Type
 
 import requests
+from firecrawl import FirecrawlApp
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 
@@ -196,3 +197,138 @@ class ServiceHistoryTool(BaseTool):
             return f"Error: {response.status_code}"
         except Exception as e:
             return f"Error connecting to API: {str(e)}"
+
+
+class WebSearchInput(BaseModel):
+    query: str = Field(description="Search query or URL to scrape")
+    search_type: str = Field(
+        default="search",
+        description="Type: 'search' for web search or 'scrape' for single URL",
+    )
+    max_results: Optional[int] = Field(
+        default=5, description="Maximum number of search results to return"
+    )
+
+
+class WebSearchTool(BaseTool):
+    name: str = "web_search"
+    description: str = """Search the web or scrape specific URLs for information using Firecrawl.
+    Use search_type='scrape' when user provides a specific URL to extract content from.
+    Use search_type='search' (default) for general web searches and queries."""
+    args_schema: Type[BaseModel] = WebSearchInput
+
+    def _run(
+        self, query: str, search_type: str = "search", max_results: int = 5
+    ) -> str:
+        import os
+        import re
+
+        api_key = os.getenv("FIRECRAWL_API_KEY")
+        if not api_key:
+            return "Error: Firecrawl API key not configured. Please set FIRECRAWL_API_KEY environment variable."
+
+        # Debug: Check what we're receiving
+        print(f"DEBUG: Received query type: {type(query)}, value: {query}")
+        print(f"DEBUG: search_type: {search_type}, max_results: {max_results}")
+
+        # Ensure query is a string
+        if not isinstance(query, str):
+            if isinstance(query, dict):
+                # If it's a dict, try to extract the URL
+                query = query.get("query", query.get("url", str(query)))
+            else:
+                query = str(query)
+
+        try:
+            firecrawl = FirecrawlApp(api_key=api_key)
+
+            # Auto-detect if this should be a scrape or search
+            url_pattern = re.compile(r"^https?://[^\s]+")
+            is_url = url_pattern.match(query.strip())
+
+            # If search_type is scrape but query isn't a URL, check if there's a URL in the query
+            if search_type == "scrape" and not is_url:
+                # Look for URLs within the query text
+                url_in_text = re.search(r"https?://[^\s]+", query)
+                if url_in_text:
+                    query = url_in_text.group()
+                    is_url = url_pattern.match(query.strip())
+
+            if search_type == "scrape" and is_url:
+                # Scrape a specific URL
+                print(f"DEBUG: About to scrape URL: {query.strip()}")
+                try:
+                    result = firecrawl.scrape(
+                        url=query.strip(), formats=["markdown"], only_main_content=True
+                    )
+                    print(f"DEBUG: Scrape result: {result}")
+                    if result and "success" in result and result["success"]:
+                        content = result.get("data", {}).get(
+                            "markdown", "No content available"
+                        )
+                        return f"Content from {query}:\n\n{content}"
+                    return f"Error: Could not scrape URL {query}. {result.get('error', 'Unknown error') if result else 'No response'}"
+                except Exception as scrape_error:
+                    print(f"DEBUG: Scrape exception: {scrape_error}")
+                    return f"Error scraping {query}: {str(scrape_error)}"
+
+            elif search_type == "scrape" and not is_url:
+                return f"Error: Cannot scrape '{query}' - no valid URL found. Please provide a URL starting with http:// or https://"
+
+            else:
+                # Perform web search (default behavior)
+                print(f"DEBUG: About to search for: {query.strip()}")
+                try:
+                    search_result = firecrawl.search(
+                        query=query.strip(), limit=max_results
+                    )
+                    print(f"DEBUG: Search result: {search_result}")
+
+                    # Handle different response formats
+                    if hasattr(search_result, "web") and search_result.web:
+                        # New format: SearchResponse object with web results
+                        data = search_result.web
+                        formatted_results = []
+                        for i, item in enumerate(data[:max_results], 1):
+                            title = getattr(item, "title", "No title")
+                            url = getattr(item, "url", "No URL")
+                            description = getattr(
+                                item, "description", "No description"
+                            )[:300]
+                            formatted_results.append(
+                                f"{i}. **{title}**\n   URL: {url}\n   Content: {description}..."
+                            )
+
+                        return f"Search results for '{query}':\n\n" + "\n\n".join(
+                            formatted_results
+                        )
+
+                    elif isinstance(search_result, dict) and "success" in search_result:
+                        # Old format: Dictionary response
+                        if search_result["success"]:
+                            data = search_result.get("data", [])
+                            if data and len(data) > 0:
+                                formatted_results = []
+                                for i, item in enumerate(data[:max_results], 1):
+                                    title = item.get("title", "No title")
+                                    url = item.get("url", "No URL")
+                                    snippet = item.get(
+                                        "markdown",
+                                        item.get("description", "No description"),
+                                    )[:300]
+                                    formatted_results.append(
+                                        f"{i}. **{title}**\n   URL: {url}\n   Content: {snippet}..."
+                                    )
+
+                                return (
+                                    f"Search results for '{query}':\n\n"
+                                    + "\n\n".join(formatted_results)
+                                )
+
+                    return f"No search results found for: {query}"
+                except Exception as search_error:
+                    print(f"DEBUG: Search exception: {search_error}")
+                    return f"Error searching for {query}: {str(search_error)}"
+
+        except Exception as e:
+            return f"Error performing web search: {str(e)}"

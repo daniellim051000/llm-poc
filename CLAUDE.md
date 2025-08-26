@@ -27,6 +27,7 @@ AZURE_OPENAI_ENDPOINT=your_endpoint_here
 AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
 DJANGO_API_URL=http://localhost:8000
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here
 ```
 
 ### Django API Setup
@@ -70,12 +71,16 @@ python app.py  # Runs on port 5000
 7. `active_contracts` - Get all active SLA agreements
 8. `serial_lookup` - Machine serial number lookup
 9. `service_history` - Maintenance and service records
+10. `web_search` - Search the web or scrape URLs using Firecrawl
 
 ## Sample Queries
 - "What is the purchase history for Company A?"
 - "What model did Company A purchase from Ricoh?"
 - "What contracts are currently active?"
 - "Show me the service history for customer Company B"
+- "Search for industry trends about office equipment leasing"
+- "What are the latest news about Ricoh printers?"
+- "Find information about our competitor's pricing on copiers"
 
 ## Testing the System
 ```bash
