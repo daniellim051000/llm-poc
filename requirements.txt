@@ -1,0 +1,16 @@
+# Flask LLM App Dependencies
+flask==3.1.2
+langchain==0.3.27
+langchain-openai==0.3.31
+requests==2.32.5
+python-dotenv==1.1.1
+
+# Django API Dependencies
+Django==5.2.5
+djangorestframework==3.16.1
+asgiref==3.9.1
+sqlparse==0.5.3
+
+# Development Tools
+pre-commit
+ruff
