@@ -44,6 +44,7 @@ python manage.py runserver 8000
 cd flask_llm
 source venv/bin/activate
 pip install -r requirements.txt
+flask db upgrade  # Apply SQLAlchemy migrations
 python app.py  # Runs on port 5000
 ```
 
@@ -54,12 +55,16 @@ python app.py  # Runs on port 5000
 - **API Endpoints**: RESTful endpoints for all business entities
 - **Database**: SQLite with sample business data
 - **Data Population**: `populate_data.py` creates test customers, invoices, contracts
+- **Test Suite**: Complete model and API endpoint testing in `tests/` directory
 
 ### Flask LLM App (`flask_llm/`)
 - **LangChain Agent**: `llm_agent.py` - Azure OpenAI integration with tool access
-- **API Tools**: `api_tools.py` - 9 specialized tools for querying Django API
+- **API Tools**: `api_tools.py` - 10 specialized tools for querying Django API and web search
 - **Flask Routes**: Health check, query endpoint, examples endpoint
 - **Templates**: Simple HTML interface at `/`
+- **Database**: SQLite with SQLAlchemy ORM and Alembic migrations
+- **Authentication**: User login system with Flask-Login
+- **Test Suite**: Comprehensive unit tests in `tests/` directory with mocked external services
 
 ### LangChain Tools Available
 1. `customer_search` - Find customers by name
@@ -83,6 +88,8 @@ python app.py  # Runs on port 5000
 - "Find information about our competitor's pricing on copiers"
 
 ## Testing the System
+
+### Manual Testing
 ```bash
 # Health check
 curl http://localhost:5000/health
@@ -93,8 +100,46 @@ curl -X POST http://localhost:5000/query \
   -d '{"question": "What contracts are currently active?"}'
 ```
 
+### Automated Unit Tests
+
+The project includes comprehensive unit tests (99 tests total):
+
+```bash
+# Run all tests
+python run_tests.py
+
+# Run specific test suites
+python run_tests.py --django-only    # Django API tests (50 tests)
+python run_tests.py --flask-only     # Flask LLM tests (49 tests)
+python run_tests.py --verbose        # Detailed output
+```
+
+**Test Coverage:**
+- **Django API**: All models, views, API endpoints, and error handling
+- **Flask LLM**: All routes, authentication, API tools, and LLM agent functionality
+- **Mocking**: External services (Azure OpenAI, Firecrawl) are mocked for reliable testing
+- **Fixtures**: Comprehensive test data setup for consistent testing
+
+## Database Management
+
+### Django API (Django ORM)
+```bash
+cd django_api
+python manage.py migrate          # Apply Django migrations
+python populate_data.py           # Load sample business data
+```
+
+### Flask LLM App (SQLAlchemy + Alembic)
+```bash
+cd flask_llm
+flask db upgrade                  # Apply SQLAlchemy migrations
+flask db migrate -m "message"    # Create new migration
+python create_user.py             # Create user accounts
+```
+
 ## Important Notes
 - Both services must be running simultaneously (Django on 8000, Flask on 5000)
 - Django API must be populated with sample data before testing
+- Flask app database must be initialized with `flask db upgrade`
 - Azure OpenAI credentials are required for LLM functionality
 - The system is designed for business data queries, not general conversation
