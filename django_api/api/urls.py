@@ -8,6 +8,7 @@ from .views import (
     ItemViewSet,
     SerialViewSet,
     ServiceViewSet,
+    health_check,
 )
 
 router = DefaultRouter()
@@ -20,4 +21,5 @@ router.register(r"services", ServiceViewSet)
 
 urlpatterns = [
     path("api/", include(router.urls)),
+    path("api/health/", health_check, name="health_check"),
 ]
