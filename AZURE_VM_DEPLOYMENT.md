@@ -1,6 +1,6 @@
 # Azure Ubuntu VM Deployment Guide
 
-This guide covers deploying the LLM POC Business Data Query System on an Ubuntu virtual machine in Microsoft Azure.
+This guide covers deploying the LLM POC Business Data Query System on an Ubuntu virtual machine in Microsoft Azure using Docker Compose for containerized deployment.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ az vm create \
 
 **Recommended VM Sizes:**
 - **Development/Testing**: Standard_B2s (2 vCPUs, 4 GB RAM)
-- **Production**: Standard_D4s_v3 (4 vCPUs, 16 GB RAM)
+- **Production**: Standard_D4s_v3+ (4+ vCPUs, 16+ GB RAM) - More CPUs = more Gunicorn workers
 
 ### 2. Configure Network Security Group
 
@@ -46,6 +46,9 @@ az vm open-port --port 443 --resource-group myResourceGroup --name llm-poc-vm --
 
 # Allow Flask app (5000) - for development/testing only
 az vm open-port --port 5000 --resource-group myResourceGroup --name llm-poc-vm --priority 1030
+
+# Allow Django API (8000) - for development/testing only
+az vm open-port --port 8000 --resource-group myResourceGroup --name llm-poc-vm --priority 1040
 ```
 
 ## System Preparation
@@ -63,35 +66,30 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl wget git build-essential
 ```
 
-### 3. Install Python 3.13
+### 3. Install Docker & Docker Compose
 
 ```bash
-# Add deadsnakes PPA for latest Python versions
-sudo apt install -y software-properties-common
-sudo add-apt-repository ppa:deadsnakes/ppa -y
-sudo apt update
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker azureuser
 
-# Install Python 3.13 and development tools
-sudo apt install -y python3.13 python3.13-venv python3.13-dev python3-pip
-sudo apt install -y sqlite3 libsqlite3-dev
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
-# Set Python 3.13 as default (optional)
-sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
+# Log out and back in for docker group changes to take effect
+# Or run: newgrp docker
 ```
 
-### 4. Install Process Manager
+### 4. Verify Installation
 
 ```bash
-# Install supervisor for process management
-sudo apt install -y supervisor
-
-# Or install PM2 (Node.js process manager)
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo npm install -g pm2
+docker --version
+docker-compose --version
 ```
 
-## Application Deployment
+## Docker Compose Deployment
 
 ### 1. Clone Repository
 
@@ -101,150 +99,136 @@ git clone <YOUR_REPOSITORY_URL> llm-poc
 cd llm-poc
 ```
 
-### 2. Set Up Django API
+### 2. Configure Environment Files
 
 ```bash
-cd django_api
+# Create Django API environment file
+cat > django_api/.env << EOF
+# Database Configuration
+POSTGRES_DB=llm_poc_django
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_secure_password_here
 
-# Create virtual environment
-python3.13 -m venv venv
-source venv/bin/activate
+# Django Settings
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,nginx,django-api
+SECRET_KEY=your_django_secret_key_here
+EOF
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run migrations and populate data
-python manage.py migrate
-python populate_data.py
-
-# Test Django API
-python manage.py runserver 0.0.0.0:8000 &
-```
-
-### 3. Set Up Flask LLM App
-
-```bash
-cd ../flask_llm
-
-# Create virtual environment
-python3.13 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create environment file
-cat > .env << EOF
+# Create Flask LLM environment file
+cat > flask_llm/.env << EOF
+# Azure OpenAI Configuration
 AZURE_OPENAI_API_KEY=your_key_here
 AZURE_OPENAI_ENDPOINT=your_endpoint_here
 AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
-DJANGO_API_URL=http://localhost:8000
+
+# Database Configuration
+DB_HOST=postgres-flask
+DB_NAME=llm_poc_flask
+DB_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_secure_password_here
+
+# API Configuration
+DJANGO_API_URL=http://django-api:8000
 FIRECRAWL_API_KEY=your_firecrawl_api_key_here
+
+# Flask Settings
+FLASK_ENV=production
+SECRET_KEY=your_flask_secret_key_here
 EOF
+```
 
-# Initialize database
-flask db upgrade
+### 3. Deploy with Docker Compose
 
-# Create initial user (optional)
-python create_user.py
+```bash
+# Build and start all services
+docker-compose up -d --build
 
-# Test Flask app
-python app.py &
+# View logs to ensure everything started correctly
+docker-compose logs -f
+
+# Check service status
+docker-compose ps
+```
+
+### 4. Initialize Databases
+
+```bash
+# Wait for services to be healthy, then initialize data
+sleep 30
+
+# Run Django migrations
+docker-compose exec django-api python manage.py migrate
+
+# Populate Django with sample data
+docker-compose exec django-api python populate_data.py
+
+# Run Flask migrations
+docker-compose exec flask-app flask db upgrade
+
+# Create Flask users (optional)
+docker-compose exec flask-app python create_user.py
+```
+
+## Dynamic Worker Scaling
+
+The deployment uses **dynamic Gunicorn workers** based on CPU count using the formula `(2 × CPU cores) + 1`.
+
+### Worker Scaling by VM Size
+
+| VM Size | vCPUs | Gunicorn Workers | Memory Usage |
+|---------|-------|------------------|--------------|
+| Standard_B2s | 2 | 5 workers | ~4 GB RAM |
+| Standard_D4s_v3 | 4 | 9 workers | ~16 GB RAM |
+| Standard_D8s_v3 | 8 | 17 workers | ~32 GB RAM |
+| Standard_D16s_v3 | 16 | 33 workers | ~64 GB RAM |
+
+### Configuration Files
+
+The system uses `gunicorn.conf.py` files in both Django and Flask directories that automatically calculate worker count:
+
+```python
+import multiprocessing
+workers = (2 * multiprocessing.cpu_count()) + 1
+```
+
+### Viewing Current Worker Count
+
+```bash
+# Check actual worker count being used
+docker-compose exec django-api ps aux | grep gunicorn
+docker-compose exec flask-app ps aux | grep gunicorn
+
+# Or check the logs during startup
+docker-compose logs django-api | grep "workers"
+docker-compose logs flask-app | grep "workers"
 ```
 
 ## Production Configuration
 
-### 1. Using Supervisor (Recommended)
+### SSL and Reverse Proxy (Optional)
 
-Create supervisor configuration files:
-
-```bash
-# Django API supervisor config
-sudo tee /etc/supervisor/conf.d/django-api.conf << EOF
-[program:django-api]
-command=/home/azureuser/llm-poc/django_api/venv/bin/python manage.py runserver 0.0.0.0:8000
-directory=/home/azureuser/llm-poc/django_api
-user=azureuser
-autostart=true
-autorestart=true
-stderr_logfile=/var/log/django-api.err.log
-stdout_logfile=/var/log/django-api.out.log
-environment=PATH="/home/azureuser/llm-poc/django_api/venv/bin"
-EOF
-
-# Flask LLM app supervisor config
-sudo tee /etc/supervisor/conf.d/flask-llm.conf << EOF
-[program:flask-llm]
-command=/home/azureuser/llm-poc/flask_llm/venv/bin/python app.py
-directory=/home/azureuser/llm-poc/flask_llm
-user=azureuser
-autostart=true
-autorestart=true
-stderr_logfile=/var/log/flask-llm.err.log
-stdout_logfile=/var/log/flask-llm.out.log
-environment=PATH="/home/azureuser/llm-poc/flask_llm/venv/bin"
-EOF
-
-# Reload supervisor
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start all
-```
-
-### 2. Using PM2 (Alternative)
+The Docker Compose setup includes Nginx as a reverse proxy. For production with SSL:
 
 ```bash
-# Start Django API with PM2
-cd /home/azureuser/llm-poc/django_api
-pm2 start --name "django-api" --interpreter python3 -- manage.py runserver 0.0.0.0:8000
+# The nginx service is already configured in docker-compose.yml
+# Ensure SSL certificates are placed in ./nginx/ssl/ directory
 
-# Start Flask app with PM2
-cd ../flask_llm
-pm2 start --name "flask-llm" app.py --interpreter python3
+# For Let's Encrypt certificates:
+sudo apt install -y certbot
 
-# Save PM2 configuration
-pm2 save
-pm2 startup
-```
+# Generate certificates (replace your-domain.com)
+sudo certbot certonly --standalone -d your-domain.com
 
-### 3. Nginx Reverse Proxy (Production)
+# Copy certificates to nginx/ssl directory
+sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem ./nginx/ssl/
+sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem ./nginx/ssl/
+sudo chown azureuser:azureuser ./nginx/ssl/*
 
-```bash
-# Install Nginx
-sudo apt install -y nginx
-
-# Create Nginx configuration
-sudo tee /etc/nginx/sites-available/llm-poc << EOF
-server {
-    listen 80;
-    server_name your-domain.com;  # Replace with your domain or VM IP
-
-    # Flask LLM App (main interface)
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    # Django API (internal)
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-
-# Enable site
-sudo ln -s /etc/nginx/sites-available/llm-poc /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl restart nginx
+# Restart nginx service
+docker-compose restart nginx
 ```
 
 ## Security Configuration
@@ -364,103 +348,160 @@ chmod +x /home/azureuser/backup.sh
 (crontab -l 2>/dev/null; echo "0 2 * * * /home/azureuser/backup.sh") | crontab -
 ```
 
-## Testing Deployment
+## Testing Docker Deployment
 
-### 1. Verify Services
+### 1. Verify All Services
 
 ```bash
-# Check if both services are running
-curl http://localhost:8000/admin/  # Django admin (should redirect to login)
-curl http://localhost:5000/health  # Flask health check
+# Check service status
+docker-compose ps
 
-# Test from external access (replace with your VM's public IP)
-curl http://YOUR_VM_PUBLIC_IP:5000/health
+# All services should show "Up" status:
+# - postgres-django (healthy)
+# - postgres-flask (healthy)
+# - django-api (healthy)
+# - flask-app (healthy)
+# - nginx (up)
 ```
 
-### 2. Test Query Functionality
+### 2. Test Health Endpoints
 
 ```bash
-# Test a sample query
-curl -X POST http://YOUR_VM_PUBLIC_IP:5000/query \
+# Test Django API health (via docker network)
+docker-compose exec django-api curl http://localhost:8000/api/health/
+
+# Test Flask app health (via docker network)
+docker-compose exec flask-app curl http://localhost:5000/health
+
+# Test external access (replace YOUR_VM_PUBLIC_IP)
+curl http://YOUR_VM_PUBLIC_IP/health
+curl http://YOUR_VM_PUBLIC_IP:8000/api/health/
+```
+
+### 3. Test Query Functionality
+
+```bash
+# Test sample query through Nginx proxy
+curl -X POST http://YOUR_VM_PUBLIC_IP/query \
   -H "Content-Type: application/json" \
   -d '{"question": "What contracts are currently active?"}'
+
+# Test direct Flask access
+curl -X POST http://YOUR_VM_PUBLIC_IP:5000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the purchase history for Company A?"}'
+```
+
+### 4. Verify Dynamic Workers
+
+```bash
+# Check worker count matches CPU cores
+echo "Expected workers: $((2 * $(nproc) + 1))"
+
+# Verify actual worker processes
+docker-compose exec django-api ps aux | grep "gunicorn: worker" | wc -l
+docker-compose exec flask-app ps aux | grep "gunicorn: worker" | wc -l
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Common Docker Issues
 
-1. **Port Access Issues**: Ensure NSG rules allow traffic on required ports
-2. **Python Version**: Verify Python 3.13 is installed and virtual environments use correct version
-3. **Database Permissions**: Ensure azureuser has write access to SQLite database files
-4. **Environment Variables**: Check `.env` file exists and has correct Azure OpenAI credentials
+1. **Port Access Issues**: Ensure NSG rules allow traffic on required ports (80, 443, 5000, 8000)
+2. **Service Health**: Use `docker-compose ps` to check service health status
+3. **Database Connection**: Ensure PostgreSQL containers are healthy before app containers start
+4. **Environment Variables**: Check `.env` files exist in both `django_api/` and `flask_llm/` directories
+5. **Worker Count**: Verify Gunicorn workers scale with available CPU cores
 
-### Log Locations
+### Docker Log Management
 
 ```bash
-# Supervisor logs
-tail -f /var/log/django-api.out.log
-tail -f /var/log/flask-llm.out.log
+# View logs for all services
+docker-compose logs -f
 
-# Nginx logs
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
+# View logs for specific service
+docker-compose logs -f django-api
+docker-compose logs -f flask-app
+docker-compose logs -f nginx
 
-# System logs
-sudo journalctl -u nginx -f
+# View recent logs with timestamps
+docker-compose logs --tail=100 --timestamps
+
+# Follow logs for troubleshooting
+docker-compose logs -f --tail=50
+```
+
+### Quick Troubleshooting Commands
+
+```bash
+# Restart specific service
+docker-compose restart django-api
+
+# Rebuild and restart all services
+docker-compose down && docker-compose up -d --build
+
+# Check container resource usage
+docker stats
+
+# Access container shell for debugging
+docker-compose exec django-api bash
+docker-compose exec flask-app bash
 ```
 
 ## Performance Optimization
 
 ### For Production Workloads
 
-1. **Upgrade VM Size**: Use Standard_D4s_v3 or larger
-2. **Database Migration**: Move from SQLite to PostgreSQL
-3. **Caching**: Implement Redis for query caching
-4. **Load Balancing**: Use Azure Load Balancer for multiple instances
-5. **Application Insights**: Enable Azure monitoring
+1. **Upgrade VM Size**: Use Standard_D8s_v3+ for higher worker counts and better performance
+2. **Database Optimization**: PostgreSQL containers are already configured - consider Azure Database for PostgreSQL for managed solution
+3. **Caching**: Add Redis container to docker-compose.yml for query caching
+4. **Load Balancing**: Use Azure Load Balancer with multiple VM instances
+5. **Monitoring**: Enable Azure Container Insights and Application Insights
+6. **Auto-scaling**: Configure VM Scale Sets based on CPU/memory usage
 
 ### Resource Monitoring
 
 ```bash
-# Install htop for resource monitoring
-sudo apt install -y htop
+# Monitor Docker container resources
+docker stats
 
-# Monitor processes
-htop
+# Monitor VM resources
+htop  # Install with: sudo apt install htop
 
 # Monitor disk usage
 df -h
 
 # Monitor memory usage
 free -h
+
+# View container resource limits
+docker-compose exec django-api cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+docker-compose exec flask-app cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 ```
 
-## Alternative: Using Docker on Azure VM
+### Scaling Considerations
 
-For a more containerized approach, you can also deploy using the existing Docker configuration:
+**Worker Scaling Table:**
+- 2 vCPU VM = 5 workers each (Django + Flask) = 10 total workers
+- 4 vCPU VM = 9 workers each = 18 total workers
+- 8 vCPU VM = 17 workers each = 34 total workers
+- 16 vCPU VM = 33 workers each = 66 total workers
 
-```bash
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker azureuser
+**Memory Requirements:**
+- Each Gunicorn worker: ~100-200 MB RAM
+- PostgreSQL containers: ~100 MB each
+- Nginx: ~50 MB
+- **Minimum**: 4 GB RAM for development
+- **Recommended**: 16+ GB RAM for production
 
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+## Deployment Summary
 
-# Clone and deploy
-git clone <YOUR_REPOSITORY_URL> llm-poc
-cd llm-poc
+This Docker Compose deployment provides:
+- ✅ **Containerized services** with health checks
+- ✅ **Dynamic worker scaling** based on CPU cores
+- ✅ **PostgreSQL databases** with persistent volumes
+- ✅ **Nginx reverse proxy** with SSL support
+- ✅ **Automated restarts** and dependency management
+- ✅ **Comprehensive logging** and monitoring
 
-# Configure environment files
-cp django_api/.env.sample django_api/.env
-cp flask_llm/.env.sample flask_llm/.env
-# Edit the .env files with your credentials
-
-# Deploy with Docker Compose
-docker-compose up -d --build
-```
-
-This provides both native deployment and containerized options for your Azure Ubuntu VM deployment.
+The system automatically scales Gunicorn workers based on your Azure VM's CPU count, ensuring optimal performance regardless of VM size.

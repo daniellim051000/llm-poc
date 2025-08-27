@@ -57,7 +57,7 @@ services:
       - POSTGRES_PORT=5432
     ports:
       - "8000:8000"
-    command: ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "mock_api.wsgi:application"]
+    command: ["gunicorn", "--config", "gunicorn.conf.py", "mock_api.wsgi:application"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s
@@ -81,7 +81,7 @@ services:
       - DB_NAME=llm_poc_flask
       - DB_PORT=5432
       - DJANGO_API_URL=http://django-api:8000
-    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:app"]
+    command: ["gunicorn", "--config", "gunicorn.conf.py", "app:app"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
