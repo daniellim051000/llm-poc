@@ -1,6 +1,7 @@
 from django.db.models import Q
+from django.http import JsonResponse
 from rest_framework import viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
 from .models import Contract, Customer, Invoice, Item, Serial, Service
@@ -131,3 +132,9 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+@api_view(["GET"])
+def health_check(request):
+    """Health check endpoint for Docker container monitoring"""
+    return JsonResponse({"status": "healthy", "service": "django-api"})

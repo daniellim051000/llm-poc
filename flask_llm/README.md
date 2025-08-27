@@ -22,14 +22,20 @@ User Query → Flask App → LangChain Agent → Django REST API → Database
    pip install -r requirements.txt
    ```
 
-3. **Start Django API** (in separate terminal)
+3. **Initialize Database**
+   ```bash
+   # Apply SQLAlchemy migrations
+   flask db upgrade
+   ```
+
+4. **Start Django API** (in separate terminal)
    ```bash
    cd ../django_api
    source venv/bin/activate
    python manage.py runserver 8000
    ```
 
-4. **Start Flask App**
+5. **Start Flask App**
    ```bash
    source venv/bin/activate
    python app.py
@@ -83,3 +89,31 @@ The LangChain agent has access to these tools:
 - **Active Contracts**: Get all active SLA agreements
 - **Serial Lookup**: Look up machine serial numbers
 - **Service History**: Get maintenance and service records
+- **Web Search**: Search the web or scrape URLs using Firecrawl
+
+## Database Management
+
+The Flask app uses SQLAlchemy with Alembic for database migrations:
+
+```bash
+# Apply migrations
+flask db upgrade
+
+# Create new migration (after model changes)
+flask db migrate -m "Description of changes"
+
+# Check current migration status
+flask db current
+
+# Downgrade (if needed)
+flask db downgrade
+```
+
+## User Management
+
+The system includes user authentication with SQLite database:
+
+```bash
+# Create a new user (use the create_user.py script)
+python create_user.py
+```

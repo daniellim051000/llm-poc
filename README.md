@@ -56,6 +56,10 @@ cd flask_llm
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Initialize database (if not already done)
+flask db upgrade  # Apply SQLAlchemy migrations
+
 python app.py  # Runs on port 5000
 ```
 
@@ -110,21 +114,75 @@ Try these natural language queries:
 
 ## 🧪 Testing the System
 
-### Health Check
+### Manual API Testing
+
+#### Health Check
 ```bash
 curl http://localhost:5000/health
 ```
 
-### Query via API
+#### Query via API
 ```bash
 curl -X POST http://localhost:5000/query \
   -H "Content-Type: application/json" \
   -d '{"question": "What contracts are currently active?"}'
 ```
 
-### Get Sample Queries
+#### Get Sample Queries
 ```bash
 curl http://localhost:5000/examples
+```
+
+### Automated Unit Tests
+
+The project includes comprehensive unit tests for both Django API and Flask LLM applications.
+
+#### Running All Tests
+```bash
+# Run all tests (99 tests total)
+python run_tests.py
+
+# Run with verbose output
+python run_tests.py --verbose
+```
+
+#### Running Specific Test Suites
+```bash
+# Run only Django API tests (50 tests)
+python run_tests.py --django-only
+
+# Run only Flask LLM tests (49 tests)
+python run_tests.py --flask-only
+
+# Just install test dependencies
+python run_tests.py --setup-only
+```
+
+#### Test Coverage
+
+**Django API Tests (50 tests):**
+- All 8 data models with validation and relationships
+- All API endpoints and custom actions
+- Error handling and edge cases
+- Database constraints and cascade operations
+
+**Flask LLM App Tests (49 tests):**
+- All Flask routes and authentication flows
+- All 10 API tools with mocked external services
+- LangChain agent and Azure OpenAI integration
+- Firecrawl web search and URL scraping functionality
+
+#### Manual Test Commands (Alternative)
+```bash
+# Django tests directly
+cd django_api
+source ../venv/bin/activate
+pytest tests/
+
+# Flask tests directly
+cd flask_llm
+source ../venv/bin/activate
+pytest tests/
 ```
 
 ## 📁 Project Structure
@@ -137,14 +195,31 @@ llm-poc/
 │   │   ├── serializers.py     # API serializers
 │   │   ├── views.py           # API endpoints
 │   │   └── urls.py            # URL routing
+│   ├── tests/                 # Test suite
+│   │   ├── __init__.py        # Test package init
+│   │   ├── conftest.py        # Test fixtures
+│   │   ├── test_models.py     # Model unit tests
+│   │   └── test_views.py      # API endpoint tests
+│   ├── pytest.ini            # Test configuration
+│   ├── test_requirements.txt  # Test dependencies
 │   ├── populate_data.py       # Sample data loader
 │   └── manage.py              # Django management
 ├── flask_llm/                 # Flask LLM frontend
 │   ├── app.py                 # Main Flask application
 │   ├── llm_agent.py           # LangChain agent setup
 │   ├── api_tools.py           # Business data tools
+│   ├── tests/                 # Test suite
+│   │   ├── __init__.py        # Test package init
+│   │   ├── conftest.py        # Test fixtures
+│   │   ├── test_app.py        # Flask app tests
+│   │   ├── test_api_tools.py  # API tools tests
+│   │   └── test_llm_agent.py  # LLM agent tests
+│   ├── pytest.ini            # Test configuration
+│   ├── test_requirements.txt  # Test dependencies
 │   └── templates/             # HTML templates
+├── run_tests.py               # Centralized test runner
 ├── requirements.txt           # Python dependencies
+├── CLAUDE.md                  # Claude Code guidance
 └── README.md                  # This file
 ```
 
@@ -175,6 +250,27 @@ llm-poc/
 
 ## 🛠️ Development
 
+### Database Migrations (Flask App)
+
+The Flask LLM app uses SQLAlchemy with Alembic for database migrations:
+
+```bash
+cd flask_llm
+source venv/bin/activate
+
+# Create a new migration (after model changes)
+flask db migrate -m "Description of changes"
+
+# Apply migrations
+flask db upgrade
+
+# Downgrade migrations (if needed)
+flask db downgrade
+
+# Check migration status
+flask db current
+```
+
 ### Code Quality
 ```bash
 # Format code
@@ -184,8 +280,19 @@ ruff format .
 ruff check .
 ```
 
+### Testing
+```bash
+# Run all tests
+python run_tests.py
+
+# Run tests with coverage (if coverage installed)
+python run_tests.py --verbose
+```
+
 ### Dependencies
-All dependencies are managed in the root `requirements.txt` file for both Flask and Django applications.
+- **Runtime dependencies**: Managed in root `requirements.txt` for both applications
+- **Test dependencies**: Separate `test_requirements.txt` files in each application directory
+- **Test runner**: Centralized `run_tests.py` automatically installs and manages test dependencies
 
 ## 📝 License
 

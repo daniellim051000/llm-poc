@@ -1,0 +1,121 @@
+services:
+  postgres-django:
+    image: postgres:15-alpine
+    container_name: llm_poc_postgres_django
+    restart: unless-stopped
+    env_file:
+      - ./django_api/.env
+    environment:
+      POSTGRES_DB: llm_poc_django
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_django_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llm_poc_django"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-network
+
+  postgres-flask:
+    image: postgres:15-alpine
+    container_name: llm_poc_postgres_flask
+    restart: unless-stopped
+    env_file:
+      - ./flask_llm/.env
+    environment:
+      POSTGRES_DB: llm_poc_flask
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_flask_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llm_poc_flask"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-network
+
+  django-api:
+    build: ./django_api
+    container_name: llm_poc_django_api
+    restart: unless-stopped
+    env_file:
+      - ./django_api/.env
+    environment:
+      - DEBUG=False
+      - ALLOWED_HOSTS=localhost,127.0.0.1,nginx,django-api
+      - POSTGRES_DB=llm_poc_django
+      - POSTGRES_HOST=postgres-django
+      - POSTGRES_PORT=5432
+    ports:
+      - "8000:8000"
+    command: ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "mock_api.wsgi:application"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres-django:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  flask-app:
+    build: ./flask_llm
+    container_name: llm_poc_flask_app
+    restart: unless-stopped
+    env_file:
+      - ./flask_llm/.env
+    environment:
+      - DB_HOST=postgres-flask
+      - DB_NAME=llm_poc_flask
+      - DB_PORT=5432
+      - DJANGO_API_URL=http://django-api:8000
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:app"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres-flask:
+        condition: service_healthy
+      django-api:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: llm_poc_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - django-api
+      - flask-app
+    networks:
+      - app-network
+
+volumes:
+  postgres_django_data:
+  postgres_flask_data:
+
+networks:
+  app-network:
+    driver: bridge

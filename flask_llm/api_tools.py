@@ -4,6 +4,7 @@ import requests
 from firecrawl import FirecrawlApp
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
+from settings import settings
 
 
 class CustomerSearchInput(BaseModel):
@@ -33,7 +34,7 @@ class CustomerSearchTool(BaseTool):
     args_schema: Type[BaseModel] = CustomerSearchInput
 
     def _run(self, customer_name: Optional[str] = None) -> str:
-        url = "http://localhost:8000/api/customers/"
+        url = f"{settings.DJANGO_API_URL}/api/customers/"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -56,7 +57,7 @@ class CustomerInvoicesTool(BaseTool):
     description: str = "Get all invoices for a specific customer by customer ID"
 
     def _run(self, customer_id: int) -> str:
-        url = f"http://localhost:8000/api/customers/{customer_id}/invoices/"
+        url = f"{settings.DJANGO_API_URL}/api/customers/{customer_id}/invoices/"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -71,7 +72,7 @@ class CustomerContractsTool(BaseTool):
     description: str = "Get all contracts for a specific customer by customer ID"
 
     def _run(self, customer_id: int) -> str:
-        url = f"http://localhost:8000/api/customers/{customer_id}/contracts/"
+        url = f"{settings.DJANGO_API_URL}/api/customers/{customer_id}/contracts/"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -86,7 +87,7 @@ class CustomerServicesTool(BaseTool):
     description: str = "Get all services for a specific customer by customer ID"
 
     def _run(self, customer_id: int) -> str:
-        url = f"http://localhost:8000/api/customers/{customer_id}/services/"
+        url = f"{settings.DJANGO_API_URL}/api/customers/{customer_id}/services/"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -102,7 +103,7 @@ class ItemSearchTool(BaseTool):
     args_schema: Type[BaseModel] = ItemSearchInput
 
     def _run(self, query: Optional[str] = None, brand: Optional[str] = None) -> str:
-        url = "http://localhost:8000/api/items/search/"
+        url = f"{settings.DJANGO_API_URL}/api/items/search/"
         params = {}
         if query:
             params["q"] = query
@@ -125,9 +126,9 @@ class InvoiceSearchTool(BaseTool):
 
     def _run(self, customer_name: Optional[str] = None) -> str:
         if customer_name:
-            url = f"http://localhost:8000/api/invoices/by_customer/?customer_name={customer_name}"
+            url = f"{settings.DJANGO_API_URL}/api/invoices/by_customer/?customer_name={customer_name}"
         else:
-            url = "http://localhost:8000/api/invoices/"
+            url = f"{settings.DJANGO_API_URL}/api/invoices/"
 
         try:
             response = requests.get(url)
@@ -143,7 +144,7 @@ class ActiveContractsTool(BaseTool):
     description: str = "Get all active contracts with SLA details"
 
     def _run(self) -> str:
-        url = "http://localhost:8000/api/contracts/active/"
+        url = f"{settings.DJANGO_API_URL}/api/contracts/active/"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -158,7 +159,7 @@ class SerialLookupTool(BaseTool):
     description: str = "Look up serial numbers and machine information"
 
     def _run(self, item_id: Optional[int] = None) -> str:
-        url = "http://localhost:8000/api/serials/"
+        url = f"{settings.DJANGO_API_URL}/api/serials/"
         params = {}
         if item_id:
             params["item_id"] = item_id
@@ -179,7 +180,7 @@ class ServiceHistoryTool(BaseTool):
     def _run(
         self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> str:
-        url = "http://localhost:8000/api/services/"
+        url = f"{settings.DJANGO_API_URL}/api/services/"
         if start_date or end_date:
             url += "by_date_range/"
             params = {}
@@ -220,11 +221,9 @@ class WebSearchTool(BaseTool):
     def _run(
         self, query: str, search_type: str = "search", max_results: int = 5
     ) -> str:
-        import os
         import re
 
-        api_key = os.getenv("FIRECRAWL_API_KEY")
-        if not api_key:
+        if not settings.FIRECRAWL_API_KEY:
             return "Error: Firecrawl API key not configured. Please set FIRECRAWL_API_KEY environment variable."
 
         # Debug: Check what we're receiving
@@ -240,7 +239,7 @@ class WebSearchTool(BaseTool):
                 query = str(query)
 
         try:
-            firecrawl = FirecrawlApp(api_key=api_key)
+            firecrawl = FirecrawlApp(api_key=settings.FIRECRAWL_API_KEY)
 
             # Auto-detect if this should be a scrape or search
             url_pattern = re.compile(r"^https?://[^\s]+")
