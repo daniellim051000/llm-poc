@@ -25,7 +25,7 @@ class Settings:
     DB_NAME = os.getenv("DB_NAME", "llm_poc_flask")
     DB_USER = os.getenv("DB_USER", "postgres")
     DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
-    DB_PORT = os.getenv("DB_PORT", "5433")
+    DB_PORT = os.getenv("DB_PORT", "5432")
 
     # Flask-SQLAlchemy configuration
     SQLALCHEMY_DATABASE_URI = (
