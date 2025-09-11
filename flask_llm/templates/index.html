@@ -170,6 +170,25 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+
+        footer {
+            flex: 1;
+            text-align: center;
+            margin-top: 30px;
+            padding: 15px 0;
+            font-size: 14px;
+            color: #666;
+            background-color: #f1f1f1;
+            border-top: 1px solid #ddd;
+            border-radius: 0 0 10px 10px;
+        }
+
+        .subtitle {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
     </style>
 </head>
 <body>
@@ -177,6 +196,13 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h1 style="margin: 0;">🤖 RICOH POC</h1>
             <a href="/logout" style="background-color: #dc3545; color: white; padding: 8px 16px; text-decoration: none; border-radius: 5px; font-size: 14px;">Logout</a>
+        </div>
+
+        <div class="subtitle">
+            <span>{{ ai_model }}</span>
+            <div>
+                <span>Today usage count : <span id="userUsageCount">{{ user_usage_count }}</span>/50</span>
+            </div>
         </div>
 
         <div class="examples">
@@ -213,6 +239,10 @@
 
         <div class="status" id="statusMessage"></div>
     </div>
+
+    <footer>
+        Developed by Infront Consulting &copy; 2025
+    </footer>
 
     <script>
         function setQuestion(question) {
@@ -258,10 +288,16 @@
 
                 if (response.ok) {
                     // Show successful result
-                    document.getElementById('questionDisplay').textContent = `Q: ${data.question}`;
+                    document.getElementById('questionDisplay').textContent = `Qss: ${data.question}`;
                     document.getElementById('answerDisplay').textContent = data.answer;
                     document.getElementById('answerDisplay').classList.remove('error');
                     resultSection.classList.add('show');
+
+                    const usageCount = document.getElementById('userUsageCount');
+                    const newCount = parseInt(usageCount.innerText, 10) + 1
+
+                    usageCount.innerText = newCount;
+
                     showStatus('Query completed successfully!');
                 } else {
                     // Show error

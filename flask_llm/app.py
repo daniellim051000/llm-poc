@@ -22,7 +22,7 @@ from flask_login import (
 )
 from flask_migrate import Migrate
 from llm_agent import create_agent
-from models import User, db
+from models import User, Counter, db
 from settings import settings
 
 load_dotenv()
@@ -68,7 +68,17 @@ def get_agent():
 @app.route("/", methods=["GET"])
 @login_required_redirect
 def index():
-    return render_template("index.html")
+
+    today = datetime.utcnow().date()
+    
+    counter_data = Counter.query.filter_by(user_id = current_user.id, date=today).first()
+    user_usage_count = counter_data.count if counter_data else 0
+
+    return render_template(
+        "index.html",
+        ai_model = settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+        user_usage_count = user_usage_count,
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -134,10 +144,17 @@ def query_data():
         data = request.get_json()
         if not data or "question" not in data:
             return jsonify({"error": "Missing 'question' in request body"}), 400
+        
+        today = datetime.utcnow().date()
+        current_count = Counter.query.filter_by(user_id = current_user.id, date =today).first()
+        if current_count and current_count.count >= 50:
+            return jsonify({"error": "Today's request limit has been exceeded. Please try again tomorrow."}), 403
 
         question = data["question"]
         agent = get_agent()
         response = agent.query(question)
+
+        Counter.increment(current_user.id)
 
         return jsonify({"question": question, "answer": response})
 
